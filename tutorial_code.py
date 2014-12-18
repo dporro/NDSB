@@ -1,6 +1,7 @@
 #Import libraries for doing image analysis
 from skimage.io import imread
-from skimage.transform import resize
+from skimage.transform import resize 
+from skimage.filter import threshold_adaptive, inverse
 from sklearn.ensemble import RandomForestClassifier as RF
 from sklearn.ensemble import GradientBoostingClassifier
 import glob
@@ -21,6 +22,7 @@ from scipy import ndimage
 from skimage.feature import peak_local_max
 import mahotas
 from mahotas import zernike
+from mahotas import lbp
 import pdb
 import datetime
 # make graphics inline
@@ -29,7 +31,9 @@ import datetime
 import warnings
 warnings.filterwarnings("ignore")
 
-data_path = 'E:\Competitions\NationalDataScienceBowl'
+#data_path = 'E:\Competitions\NationalDataScienceBowl'
+data_path = '/home/sandrovegapons/Documents/Competitions/NDSB'
+
 # get the classnames from the directory structure
 directory_names = list(set(glob.glob(os.path.join(data_path,"train", "*"))\
  ).difference(set(glob.glob(os.path.join(data_path,"train","*.*")))))
@@ -37,7 +41,7 @@ directory_names = list(set(glob.glob(os.path.join(data_path,"train", "*"))\
 ## Example image
 ## This example was chosen for because it has two noncontinguous pieces
 ## that will make the segmentation example more illustrative
-#example_file = glob.glob(os.path.join(directory_names[5],"*.jpg"))[9]
+#example_file = glob.glob(os.path.join(directory_names[11],"*.jpg"))[9]
 #print example_file
 #im = imread(example_file, as_grey=True)
 #plt.imshow(im, cmap=cm.gray)
@@ -48,6 +52,7 @@ directory_names = list(set(glob.glob(os.path.join(data_path,"train", "*"))\
 #f = plt.figure(figsize=(12,3))
 #imthr = im.copy()
 #imthr = np.where(im > np.mean(im),0.,1.0)
+##imthr = np.abs(1-threshold_adaptive(im, block_size=len(im)/4))
 #sub1 = plt.subplot(1,4,1)
 #plt.imshow(im, cmap=cm.gray)
 #sub1.set_title("Original Image")
@@ -56,10 +61,12 @@ directory_names = list(set(glob.glob(os.path.join(data_path,"train", "*"))\
 #plt.imshow(imthr, cmap=cm.gray_r)
 #sub2.set_title("Thresholded Image")
 #
-#imdilated = morphology.dilation(imthr, np.ones((4,4)))
+#imdilated = morphology.dilation(imthr, np.ones((3,3)))
 #sub3 = plt.subplot(1, 4, 3)
 #plt.imshow(imdilated, cmap=cm.gray_r)
 #sub3.set_title("Dilated Image")
+#
+#
 #
 #labels = measure.label(imdilated)
 #labels = imthr*labels
@@ -67,7 +74,7 @@ directory_names = list(set(glob.glob(os.path.join(data_path,"train", "*"))\
 #sub4 = plt.subplot(1, 4, 4)
 #sub4.set_title("Labeled Image")
 #plt.imshow(labels)
-#
+
  
 #pdb.set_trace()
 ## calculate common region properties for each region within the segmentation
@@ -85,7 +92,7 @@ def getLargestRegion(props, labelmap, imagethres):
         if regionmaxprop.filled_area < regionprop.filled_area:
             regionmaxprop = regionprop
     return regionmaxprop
-    
+  
     
 #regionmax = getLargestRegion(props=regions, labelmap=labels, imagethres=imthr)
 #plt.imshow(np.where(labels == regionmax.label,1.0,0.0))
@@ -113,20 +120,55 @@ def getMinorMajorRatio(image):
     ratio = 0.0
     if ((not maxregion is None) and  (maxregion.major_axis_length != 0.0)):
         ratio = 0.0 if maxregion is None else  maxregion.minor_axis_length*1.0 / maxregion.major_axis_length
-    return ratio
+    return ratio, label_list
     
 # Rescale the images and create the combined metrics and training labels
     
-def get_mahotas_features(image):
+def get_mahotas_features(image, bin_image):
     """
     """
-    zer = zernike.zernike_moments(image, len(image)/2)
-    rou = mahotas.features.roundness(image)
-    ellip = mahotas.features.ellipse_axes(image)
-#    hara = mahotas.features.haralick(image)
+    
 #    pdb.set_trace()
-#    return np.concatenate((zer, np.array([rou]), np.array(ellip), hara.reshape(-1)))
+    zer = zernike.zernike_moments(image, len(image)/2)
+    rou = mahotas.features.roundness(bin_image)
+    ellip = mahotas.features.ellipse_axes(bin_image)
+#    hara = mahotas.features.haralick(bin_image)
+#    lbps = lbp.lbp_transform(image, radius=1, points=8)
+    
+#    pdb.set_trace()
+#    return np.concatenate((zer, np.array([rou]), np.array(ellip), hara.reshape(-1), lbps.reshape(-1)))
     return np.concatenate((zer, np.array([rou]), np.array(ellip)))
+
+
+def get_max_region_features(max_region):
+    """
+    """
+    feats = []
+    feats.append(max_region.area)
+    feats.append(max_region.convex_area)
+    feats.append(max_region.centroid[0])
+    feats.append(max_region.centroid[1])
+    feats.append(maxregion.eccentricity)
+    feats.append(maxregion.equivalent_diameter)
+    feats.append(maxregion.euler_number)
+    feats.append(maxregion.extent)
+    feats.append(maxregion.filled_area)
+    feats.append(maxregion.inertia_tensor_eigvals[0])
+    feats.append(maxregion.inertia_tensor_eigvals[1])
+    feats += maxregion.inertia_tensor.reshape(-1).tolist() #add 4 values
+    feats.append(max_region.local_centroid[0])
+    feats.append(max_region.local_centroid[1])
+    feats.append(maxregion.major_axis_length)
+    feats.append(maxregion.minor_axis_length)
+    feats.append(maxregion.orientation)
+    feats.append(maxregion.perimeter)
+    feats.append(maxregion.solidity)
+    feats += maxregion.moments.reshape(-1).tolist() #add 16 values
+    feats += maxregion.moments_central.reshape(-1).tolist() #add 16 values
+    feats += maxregion.moments_hu.reshape(-1).tolist() #add 7 values
+    #we are computing 61 features
+    return np.array(feats)
+
 
 #get the total training images
 numberofImages = 0
@@ -139,10 +181,11 @@ for folder in directory_names:
             numberofImages += 1
 
 # We'll rescale the images to be 25x25
-maxPixel = 25
+maxPixel = 45
 imageSize = maxPixel * maxPixel
 num_rows = numberofImages # one row for each image in the training dataset
-num_features = imageSize + 1 + maxPixel + 1 + 2  # for our ratio
+#num_features = imageSize + 1 + maxPixel + 1 + 2  # for our ratio
+num_features = 61 + 25 + 1 + 2
 
 # X is the feature vector with one row of features per image
 # consisting of the pixel values and our metric
@@ -174,16 +217,24 @@ for folder in directory_names:
             nameFileImage = "{0}{1}{2}".format(fileNameDir[0], os.sep, fileName)            
             image = imread(nameFileImage, as_grey=True)
             files.append(nameFileImage)
-            axisratio = getMinorMajorRatio(image)
-            image = resize(image, (maxPixel, maxPixel))
             
-            imagethr = np.where(image > np.mean(image),0.,1.0)
-            imdilated = morphology.dilation(imagethr, np.ones((4,4)))
+            image = image.copy()
+#            image = resize(image, (maxPixel, maxPixel))
             
-            # Store the rescaled image pixels and the axis ratio
-            X[i, 0:imageSize] = np.reshape(image, (1, imageSize))
-            X[i, imageSize] = axisratio
-            X[i, imageSize+1:] = get_mahotas_features(imdilated)
+            # Create the thresholded image to eliminate some of the background
+            imagethr = np.where(image > np.mean(image),0.,1.0)        
+            #Dilate the image
+            imdilated = morphology.dilation(imagethr, np.ones((3,3)))        
+            # Create the label list
+            label_list = measure.label(imdilated)
+            label_list = imagethr*(label_list+1) #+1 to avoid the case when the region of interest takes label 0
+            label_list = label_list.astype(int)            
+            region_list = measure.regionprops(label_list)
+            maxregion = getLargestRegion(region_list, label_list, imagethr)
+             
+            X[i,:61] = get_max_region_features(maxregion)
+            X[i, 61:] = get_mahotas_features(image,imdilated)
+#            X[i, imageSize+1:] = get_mahotas_features(image, imdilated)
             
             # Store the classlabel
             y[i] = label
@@ -271,17 +322,19 @@ kf = KFold(y, n_folds=5)
 y_pred = np.zeros((len(y),len(set(y))))
 for train, test in kf:
     X_train, X_test, y_train, y_test = X[train,:], X[test,:], y[train], y[test]
-    clf = RF(n_estimators=300, n_jobs=3)
+    clf = RF(n_estimators=600, n_jobs=5)
 #    clf = GradientBoostingClassifier(n_estimators=100, max_depth=6)
     clf.fit(X_train, y_train)
     y_pred[test] = clf.predict_proba(X_test)
     print 'iter'
     
 print multiclass_log_loss(y, y_pred)
+
+#print classification_report(y, y_pred, target_names=namesClasses)
     
 #training with the whole training set
 print 'Training with the whole training set'
-clf = RF(n_estimators=300, n_jobs=3)
+clf = RF(n_estimators=600, n_jobs=5)
 clf.fit(X, y)
 
 ##Reading the test set
@@ -330,16 +383,25 @@ i = 0
 report = [int((j+1)*numberofTestImages/20.) for j in range(20)]
 for fileName in fnames:
     # Read in the images and create the features
+#    nameFileImage = "{0}{1}{2}".format(fileNameDir[0], os.sep, fileName)            
     image = imread(fileName, as_grey=True)
-    axisratio = getMinorMajorRatio(image)
-    image = resize(image, (maxPixel, maxPixel))
-
-    imagethr = np.where(image > np.mean(image),0.,1.0)
-    imdilated = morphology.dilation(imagethr, np.ones((4,4)))
-    # Store the rescaled image pixels and the axis ratio
-    X_test[i, 0:imageSize] = np.reshape(image, (1, imageSize))
-    X_test[i, imageSize] = axisratio
-    X_test[i, imageSize+1:] = get_mahotas_features(imdilated)
+    
+    image = image.copy()
+#    image = resize(image, (maxPixel, maxPixel))
+    
+    # Create the thresholded image to eliminate some of the background
+    imagethr = np.where(image > np.mean(image),0.,1.0)        
+    #Dilate the image
+    imdilated = morphology.dilation(imagethr, np.ones((5,5)))        
+    # Create the label list
+    label_list = measure.label(imdilated)
+    label_list = imagethr*(label_list+1) #+1 to avoid the case when the region of interest takes label 0
+    label_list = label_list.astype(int)            
+    region_list = measure.regionprops(label_list)
+    maxregion = getLargestRegion(region_list, label_list, imagethr)
+     
+    X_test[i,:61] = get_max_region_features(maxregion)
+    X_test[i, 61:] = get_mahotas_features(image, imdilated)
  
     i += 1
     if i in report: print np.ceil(i *100.0 / numberofTestImages), "% done"
@@ -349,7 +411,7 @@ print 'writing the submission file'
 df = pd.DataFrame(y_pred, columns=labels, index=images)
 df.index.name = 'image'
 df = df[header]
-df.to_csv('competition_data/sub.csv')
+df.to_csv(os.path.join(data_path, "sub.csv"))
 #!gzip competition_data/submission.csv
 
 
