@@ -315,6 +315,7 @@ def multiclass_log_loss(y_true, y_pred, eps=1e-15):
     vectsum = np.sum(actual * np.log(predictions))
     loss = -1.0 / n_samples * vectsum
     return loss
+    
 
 # Get the probability predictions for computing the log-loss function
 kf = KFold(y, n_folds=5)
