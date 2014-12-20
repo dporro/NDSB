@@ -21,7 +21,7 @@ import pandas as pd
 from scipy import ndimage
 from skimage.feature import peak_local_max
 import mahotas
-from mahotas import zernike
+from mahotas import zernike, moments, features
 from mahotas import lbp
 import pdb
 import datetime
@@ -42,86 +42,76 @@ data_path = '/home/sandrovegapons/Documents/Competitions/NDSB'
 directory_names = list(set(glob.glob(os.path.join(data_path,"train", "*"))\
  ).difference(set(glob.glob(os.path.join(data_path,"train","*.*")))))
 
-## find the largest nonzero region
-#def getLargestRegion(props, labelmap, imagethres):
-#    regionmaxprop = None
-#    for regionprop in props:
-#        # check to see if the region is at least 50% nonzero
-#        if sum(imagethres[labelmap == regionprop.label])*1.0/regionprop.area < 0.50:
-#            continue
-#        if regionmaxprop is None:
-#            regionmaxprop = regionprop
-#        if regionmaxprop.filled_area < regionprop.filled_area:
-#            regionmaxprop = regionprop
-#    return regionmaxprop
+# find the largest nonzero region
+def getLargestRegion(props, labelmap, imagethres):
+    regionmaxprop = None
+    for regionprop in props:
+        # check to see if the region is at least 50% nonzero
+        if sum(imagethres[labelmap == regionprop.label])*1.0/regionprop.area < 0.50:
+            continue
+        if regionmaxprop is None:
+            regionmaxprop = regionprop
+        if regionmaxprop.filled_area < regionprop.filled_area:
+            regionmaxprop = regionprop
+    return regionmaxprop
 #
-#
-#def getMinorMajorRatio(image):
-#    image = image.copy()
-#    # Create the thresholded image to eliminate some of the background
-#    imagethr = np.where(image > np.mean(image),0.,1.0)
-#
-#    #Dilate the image
-#    imdilated = morphology.dilation(imagethr, np.ones((4,4)))
-#
-#    # Create the label list
-#    label_list = measure.label(imdilated)
-#    label_list = imagethr*label_list
-#    label_list = label_list.astype(int)
-#    
-#    region_list = measure.regionprops(label_list)
-#    maxregion = getLargestRegion(region_list, label_list, imagethr)
-#    
-#    # guard against cases where the segmentation fails by providing zeros
-#    ratio = 0.0
-#    if ((not maxregion is None) and  (maxregion.major_axis_length != 0.0)):
-#        ratio = 0.0 if maxregion is None else  maxregion.minor_axis_length*1.0 / maxregion.major_axis_length
-#    return ratio, label_list
-#    
 ## Rescale the images and create the combined metrics and training labels
-#    
-#def get_mahotas_features(image, bin_image):
-#    """
-#    """    
-##    pdb.set_trace()
-#    zer = zernike.zernike_moments(image, len(image)/2)
-#    rou = mahotas.features.roundness(bin_image)
-#    ellip = mahotas.features.ellipse_axes(bin_image)
-##    hara = mahotas.features.haralick(bin_image)
-##    lbps = lbp.lbp_transform(image, radius=1, points=8)    
-##    pdb.set_trace()
-##    return np.concatenate((zer, np.array([rou]), np.array(ellip), hara.reshape(-1), lbps.reshape(-1)))
-#    return np.concatenate((zer, np.array([rou]), np.array(ellip)))
+    
+def get_mahotas_features(image, bin_image):
+    """
+    """    
+#    pdb.set_trace()
+    zer = zernike.zernike_moments(image, len(image)/2)  #adding 25
+    mm = []
+    for i in range(7):
+        for j in range(7):
+            mm.append(np.log10(moments(image, i,j)))  #adding 49
+    rou = features.roundness(bin_image)        #adding 1
+    el1 = features.ellipse_axes(bin_image)[0]
+    el2 = features.ellipse_axes(bin_image)[0]#adding 2
+    exe = features.eccentricity(bin_image)    #adding 1
+    pft = features.pftas(image)               #adding 54    
+    hara = mahotas.features.haralick(image).reshape(-1)   #adding 52   
+#    return np.concatenate((zer, np.array([rou]), np.array(ellip), hara.reshape(-1), lbps.reshape(-1)))
+    #adding in total 184 features
+    return np.concatenate((zer, np.array(mm), np.array([rou, el1, el2, exe]), pft, hara))
+
 #
-#
-#def get_max_region_features(max_region):
-#    """
-#    """
-#    feats = []
-#    feats.append(max_region.area)
-#    feats.append(max_region.convex_area)
-#    feats.append(max_region.centroid[0])
-#    feats.append(max_region.centroid[1])
-#    feats.append(maxregion.eccentricity)
-#    feats.append(maxregion.equivalent_diameter)
-#    feats.append(maxregion.euler_number)
-#    feats.append(maxregion.extent)
-#    feats.append(maxregion.filled_area)
-#    feats.append(maxregion.inertia_tensor_eigvals[0])
-#    feats.append(maxregion.inertia_tensor_eigvals[1])
-#    feats += maxregion.inertia_tensor.reshape(-1).tolist() #add 4 values
-#    feats.append(max_region.local_centroid[0])
-#    feats.append(max_region.local_centroid[1])
-#    feats.append(maxregion.major_axis_length)
-#    feats.append(maxregion.minor_axis_length)
-#    feats.append(maxregion.orientation)
-#    feats.append(maxregion.perimeter)
-#    feats.append(maxregion.solidity)
-#    feats += maxregion.moments.reshape(-1).tolist() #add 16 values
-#    feats += maxregion.moments_central.reshape(-1).tolist() #add 16 values
-#    feats += maxregion.moments_hu.reshape(-1).tolist() #add 7 values
-#    #we are computing 61 features
-#    return np.array(feats)
+def get_max_region_features(max_region):
+    """
+    """
+    feats = []
+    feats.append(max_region.area)
+    feats.append(max_region.convex_area)
+    feats.append(max_region.centroid[0])
+    feats.append(max_region.centroid[1])
+    feats.append(max_region.eccentricity)
+    feats.append(max_region.equivalent_diameter)
+    feats.append(max_region.euler_number)
+    feats.append(max_region.extent)
+    feats.append(max_region.filled_area)
+    feats.append(max_region.inertia_tensor_eigvals[0])
+    feats.append(max_region.inertia_tensor_eigvals[1])
+    feats += max_region.inertia_tensor.reshape(-1).tolist() #add 4 values
+    feats.append(max_region.local_centroid[0])
+    feats.append(max_region.local_centroid[1])
+    feats.append(max_region.major_axis_length)
+    feats.append(max_region.minor_axis_length)
+    feats.append(max_region.orientation)
+    feats.append(max_region.perimeter)
+    feats.append(max_region.solidity)
+    feats += max_region.moments.reshape(-1).tolist() #add 16 values
+    feats += max_region.moments_central.reshape(-1).tolist() #add 16 values
+    feats += max_region.moments_hu.reshape(-1).tolist() #add 7 values
+    #we are computing 61 features
+    
+    feats += max_region.weighted_moments.reshape(-1).tolist() #add 16 values
+    feats += max_region.weighted_moments_central.reshape(-1).tolist() #add 16 values
+    feats += max_region.weighted_moments_hu.reshape(-1).tolist() #add 7 values
+    #adding 39 features
+    
+    #adding 100 features
+    return np.array(feats)
 #
 #
 ##get the total training images
@@ -133,14 +123,14 @@ directory_names = list(set(glob.glob(os.path.join(data_path,"train", "*"))\
 #            if fileName[-4:] != ".jpg":
 #              continue
 #            numberofImages += 1
-#
-## We'll rescale the images to be 25x25
-#maxPixel = 45
-#imageSize = maxPixel * maxPixel
+
+# We'll rescale the images to be 25x25
+maxPixel = 48
+imageSize = maxPixel * maxPixel
 #num_rows = numberofImages # one row for each image in the training dataset
-##num_features = imageSize + 1 + maxPixel + 1 + 2  # for our ratio
-#num_features = 61 + 25 + 1 + 2
-#
+num_features = 100 + 184
+piv = 100
+
 ## X is the feature vector with one row of features per image
 ## consisting of the pixel values and our metric
 #X = np.zeros((num_rows, num_features), dtype=float)
@@ -151,12 +141,12 @@ directory_names = list(set(glob.glob(os.path.join(data_path,"train", "*"))\
 ## Generate training data
 #i = 0    
 #label = 0
-## List of string of class names
+# List of string of class names
 namesClasses = list()
 #cls = dict()
-#
+
 #print "Reading images"
-## Navigate through the list of directories
+# Navigate through the list of directories
 for folder in directory_names:
     # Append the string class name for each class
     currentClass = folder.split(os.pathsep)[-1]
@@ -183,11 +173,11 @@ for folder in directory_names:
 #            label_list = measure.label(imdilated)
 #            label_list = imagethr*(label_list+1) #+1 to avoid the case when the region of interest takes label 0
 #            label_list = label_list.astype(int)            
-#            region_list = measure.regionprops(label_list)
+#            region_list = measure.regionprops(label_list, intensity_image=image)
 #            maxregion = getLargestRegion(region_list, label_list, imagethr)
 #             
-#            X[i,:61] = get_max_region_features(maxregion)
-#            X[i, 61:] = get_mahotas_features(image,imdilated)
+#            X[i,:piv] = get_max_region_features(maxregion)
+#            X[i, piv:] = get_mahotas_features(image,imdilated)
 ##            X[i, imageSize+1:] = get_mahotas_features(image, imdilated)
 #            
 #            # Store the classlabel
@@ -197,25 +187,10 @@ for folder in directory_names:
 #            report = [int((j+1)*num_rows/20.) for j in range(20)]
 #            if i in report: print np.ceil(i *100.0 / num_rows), "% done"
 #    label += 1
-#    
-#
-#print "Training"
-## n_estimators is the number of decision trees
-## max_features also known as m_try is set to the default value of the square root of the number of features
-#clf = RF(n_estimators=100, n_jobs=3);
-#scores = cross_validation.cross_val_score(clf, X, y, cv=KFold(y, n_folds=5), n_jobs=1);
-#print "Accuracy of all classes"
-#print np.mean(scores)
-#
-#kf = KFold(y, n_folds=5, shuffle=True)
-#y_pred = y * 0
-#for train, test in kf:
-#    X_train, X_test, y_train, y_test = X[train,:], X[test,:], y[train], y[test]
-#    clf = RF(n_estimators=100, n_jobs=3)
-#    clf.fit(X_train, y_train)
-#    y_pred[test] = clf.predict(X_test)
-#print classification_report(y, y_pred, target_names=namesClasses)
-#
+    
+
+print "Training"
+
 #pickle.dump(X, open('X', 'wb'))
 #pickle.dump(y, open('y', 'wb'))
 
@@ -250,7 +225,34 @@ def multiclass_log_loss(y_true, y_pred, eps=1e-15):
     vectsum = np.sum(actual * np.log(predictions))
     loss = -1.0 / n_samples * vectsum
     return loss
-
+    
+    
+#def compute_weights(class_report='class_report.txt', y=None):
+#    """
+#    """
+#    w = np.zeros(y.shape[0])
+#    data_path = '/home/sandrovegapons/Documents/Competitions/NDSB'
+#    clwg = dict()
+#    with open(os.path.join(data_path, class_report), 'rb') as rep:
+#        lines = rep.readlines()
+#        lines = lines[2:-2]
+#        for l in lines:
+#            vals = [v for v in l.strip().split(' ') if not v == '']
+#            key = os.path.split(vals[0])[-1]
+#            prec = vals[1]
+#            reca = vals[2]
+#            f1sc = vals[3]
+#            supp = vals[4]
+#            val = 1 + (int(supp))/1000.
+#            clwg[key] = val
+#    for i,v in enumerate(y):
+##        pdb.set_trace()
+#        k = os.path.split(namesClasses[int(v)])[-1]
+#        w[i] = clwg[k]
+#        
+#    return w    
+        
+                  
 
 param = {}    
 param['objective'] = 'multi:softprob'
@@ -258,35 +260,39 @@ param['objective'] = 'multi:softprob'
 param['eta'] = 0.09
 param['max_depth'] = 11
 param['silent'] = 1
-param['nthread'] = 8
+param['nthread'] = 4
 param['num_class'] = 121
 
-num_round = 600
+num_round = 350
 
+#w = compute_weights(y=y)
+#pdb.set_trace()
 
-kf = KFold(y, n_folds=5)
-# prediction probabilities number of samples, by number of classes
-y_pred = np.zeros((len(y),len(set(y))))
-for train, test in kf:
-    X_train, X_test, y_train, y_test = X[train,:], X[test,:], y[train], y[test]
-    xg_train = xgb.DMatrix(X_train, label=y_train)
-    xg_test = xgb.DMatrix(X_test, label=y_test)
-    watchlist = [(xg_train,'train'), (xg_test, 'test')]
-
-    bst = xgb.train(param, xg_train, num_round, watchlist )
-    # get prediction
-    y_pred[test] = bst.predict(xg_test).reshape(y_test.shape[0], 121)
-
-    print 'iter'
-    
-print multiclass_log_loss(y, y_pred)
+#kf = KFold(y, n_folds=5)
+## prediction probabilities number of samples, by number of classes
+#y_pred = np.zeros((len(y),len(set(y))))
+#for train, test in kf:
+##    X_train, X_test, y_train, y_test, w_train, w_test = X[train,:], X[test,:], y[train], y[test], w[train], w[test]
+#    X_train, X_test, y_train, y_test = X[train,:], X[test,:], y[train], y[test]
+##    xg_train = xgb.DMatrix(X_train, label=y_train, weight=w_train)
+#    xg_train = xgb.DMatrix(X_train, label=y_train)
+#
+#    xg_test = xgb.DMatrix(X_test, label=y_test)
+#    watchlist = [(xg_train,'train'), (xg_test, 'test')]
+#
+#    bst = xgb.train(param, xg_train, num_round, watchlist )
+#    # get prediction
+#    y_pred[test] = bst.predict(xg_test).reshape(y_test.shape[0], 121)
+#
+#    print 'iter'
+#    
+#print multiclass_log_loss(y, y_pred)
 
 #print classification_report(y, y_pred, target_names=namesClasses)
     
 #training with the whole training set
 print 'Training with the whole training set'
-#clf = RF(n_estimators=600, n_jobs=5)
-#clf.fit(X, y)
+
 xg_train = xgb.DMatrix(X, label=y)
 watchlist = [(xg_train,'train')]
 bst = xgb.train(param, xg_train, num_round, watchlist)
@@ -300,7 +306,7 @@ labels = map(lambda s: s.split('/')[-1], namesClasses)
 #get the total test images
 fnames = glob.glob(os.path.join(data_path, "test", "*.jpg"))
 numberofTestImages = len(fnames)
-#print numberofTestImages
+print numberofTestImages
 #X_test = np.zeros((numberofTestImages, num_features), dtype=float)
 images = map(lambda fileName: fileName.split('/')[-1], fnames)
 
@@ -323,16 +329,16 @@ images = map(lambda fileName: fileName.split('/')[-1], fnames)
 #    label_list = measure.label(imdilated)
 #    label_list = imagethr*(label_list+1) #+1 to avoid the case when the region of interest takes label 0
 #    label_list = label_list.astype(int)            
-#    region_list = measure.regionprops(label_list)
+#    region_list = measure.regionprops(label_list, intensity_image=image)
 #    maxregion = getLargestRegion(region_list, label_list, imagethr)
 #     
-#    X_test[i,:61] = get_max_region_features(maxregion)
-#    X_test[i, 61:] = get_mahotas_features(image, imdilated)
+#    X_test[i,:piv] = get_max_region_features(maxregion)
+#    X_test[i, piv:] = get_mahotas_features(image, imdilated)
 # 
 #    i += 1
 #    if i in report: print np.ceil(i *100.0 / numberofTestImages), "% done"
-#    
-#
+    
+
 #X_test = pickle.dump(X_test, open('X_test', 'wb'))
 X_test = pickle.load(open('X_test', 'rb'))
 
