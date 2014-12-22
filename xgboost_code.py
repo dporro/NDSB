@@ -257,8 +257,8 @@ def multiclass_log_loss(y_true, y_pred, eps=1e-15):
 param = {}    
 param['objective'] = 'multi:softprob'
 # scale weight of positive examples
-param['eta'] = 0.09
-param['max_depth'] = 11
+param['eta'] = 0.06
+param['max_depth'] = 17
 param['silent'] = 1
 param['nthread'] = 4
 param['num_class'] = 121
